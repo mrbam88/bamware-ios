@@ -9,6 +9,7 @@ import SwiftUI
 
 @available(iOS 13.0, *)
 public struct SplashScreen: View {
+    public init() {}
     public var body: some View {
         VStack {
             Text("Welcome to BamwareUI")
