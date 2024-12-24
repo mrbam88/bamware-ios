@@ -7,10 +7,11 @@
 
 import SwiftUI
 
+@available(iOS 13.0, *)
 public protocol Theme {
     var primaryColor: Color { get }
     var secondaryColor: Color { get }
     var backgroundColor: Color { get }
     var font: Font { get }
-    var buttonStyle: ButtonStyle { get }
+    var buttonStyle: any ButtonStyle { get }
 }
