@@ -4,7 +4,7 @@ public class DefaultAuthService: AuthService {
     @Published public var currentUser: User?
     private var permissionsService: UserPermissionsService?  // Optional—set later
     
-    public init() {}  // No dep at init—break cycle
+    public init() {}  // No dep—break cycle
     
     public func setPermissionsService(_ service: UserPermissionsService) {
         self.permissionsService = service
