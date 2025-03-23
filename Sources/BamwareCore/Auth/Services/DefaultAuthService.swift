@@ -1,12 +1,13 @@
-// DefaultAuthService.swift
 import Combine
 
 public class DefaultAuthService: AuthService {
-    @Published public var currentUser: User?  // Drop private(set)—public matches protocol
-    private let permissionsService: UserPermissionsService
+    @Published public var currentUser: User?
+    private var permissionsService: UserPermissionsService?  // Optional—set later
     
-    public init(permissionsService: UserPermissionsService) {
-        self.permissionsService = permissionsService
+    public init() {}  // No dep at init—break cycle
+    
+    public func setPermissionsService(_ service: UserPermissionsService) {
+        self.permissionsService = service
     }
     
     public func validateToken(_ token: String) async throws {

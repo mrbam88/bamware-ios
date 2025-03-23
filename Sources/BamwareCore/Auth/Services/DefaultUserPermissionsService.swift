@@ -1,4 +1,3 @@
-// DefaultUserPermissionsService.swift
 public class DefaultUserPermissionsService: UserPermissionsService {
     private let authService: AuthService
     
