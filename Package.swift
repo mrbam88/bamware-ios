@@ -1,24 +1,20 @@
 // swift-tools-version: 6.0
-// The swift-tools-version declares the minimum version of Swift required to build this package.
-
 import PackageDescription
 
 let package = Package(
-    name: "BamwareUI",
+    name: "BamwareIOS",
+    platforms: [.iOS(.v17)],
     products: [
-        // Products define the executables and libraries a package produces, making them visible to other packages.
-        .library(
-            name: "BamwareUI",
-            targets: ["BamwareUI"]),
+        .library(name: "BamwareCore", targets: ["BamwareCore"]),
+        .library(name: "BamwareUI", targets: ["BamwareUI"]),
+        .library(name: "BamwareMessaging", targets: ["BamwareMessaging"])
     ],
     targets: [
-        // Targets are the basic building blocks of a package, defining a module or a test suite.
-        // Targets can depend on other targets in this package and products from dependencies.
-        .target(
-            name: "BamwareUI"),
-        .testTarget(
-            name: "BamwareUITests",
-            dependencies: ["BamwareUI"]
-        ),
+        .target(name: "BamwareCore"),
+        .target(name: "BamwareUI", dependencies: ["BamwareCore"]),
+        .target(name: "BamwareMessaging", dependencies: ["BamwareCore", "BamwareUI"]),
+        .testTarget(name: "BamwareCoreTests", dependencies: ["BamwareCore"]),
+        .testTarget(name: "BamwareUITests", dependencies: ["BamwareUI"]),
+        .testTarget(name: "BamwareMessagingTests", dependencies: ["BamwareMessaging"])
     ]
 )
