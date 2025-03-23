@@ -1,12 +1,20 @@
-public class DefaultUserPermissionsService: UserPermissionsService {
-    private let authService: AuthService
+import Combine
+
+public class DefaultAuthService: AuthService {
+    @Published public var currentUser: User?
+    private var permissionsService: UserPermissionsService?
     
-    public init(authService: AuthService) {
-        self.authService = authService
+    public init() {}
+    
+    public func setPermissionsService(_ service: UserPermissionsService) {
+        self.permissionsService = service
     }
     
-    public func hasPermission(_ permission: String, tenantID: String) -> Bool {
-        guard let user = authService.currentUser, user.tenantID == tenantID else { return false }
-        return user.roles.contains("\(tenantID):\(permission)")
+    public func validateToken(_ token: String) async throws {
+        if token == "mock-token" {
+            currentUser = User(id: "1", tenantID: "demoTenant", roles: ["demoTenant:canMessage"])
+        } else {
+            currentUser = nil
+        }
     }
 }
