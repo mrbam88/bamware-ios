@@ -1,51 +1,36 @@
-// MessageListView.swift (Body unchanged—Preview tweaked)
 import SwiftUI
 import BamwareCore
 import BamwareUI
 
 public struct MessageListView: View {
-    private let messages: [Message]
+    public let messages: [Message]
     private let theme: any Theme
+    private let authService: AuthService  // Pass—core no Factory
     
-    public init(messages: [Message] = [], tenantID: String = "bamSocial", isDarkMode: Bool = false) {
+    public var shouldShowMessages: Bool {
+        guard let user = authService.currentUser,
+              let tenantID = messages.first?.tenantID,
+              user.tenantID == tenantID else { return false }
+        return user.roles.contains("\(tenantID):canMessage")
+    }
+    
+    public init(messages: [Message] = [], tenantID: String = "demoTenant", isDarkMode: Bool = false, authService: AuthService) {
         self.messages = messages
         self.theme = BrandingPalette.theme(for: tenantID, isDarkMode: isDarkMode)
+        self.authService = authService
     }
     
     public var body: some View {
-        List(messages, id: \.id) { message in
-            SmartText(message.content, theme: theme)
+        if shouldShowMessages {
+            List(messages, id: \.id) { message in
+                SmartText(message.content, theme: theme)
+            }
+            .navigationTitle("Messages")
+            .background(theme.backgroundColor)
+        } else {
+            Text("No permission to view messages")
+                .foregroundColor(theme.secondaryColor)
+                .background(theme.backgroundColor)
         }
-        .navigationTitle("Messages")
-        .background(theme.backgroundColor)
-    }
-}
-
-struct MessageListView_Previews: PreviewProvider {
-    static let mockMessages = [
-        Message(id: "1", content: "Yo, brah!", tenantID: "bamSocial"),
-        Message(id: "2", content: "Bamware’s live!", tenantID: "bamSocial")
-    ]
-    
-    static let mockMatchMessages = [
-        Message(id: "1", content: "Hey, cutie!", tenantID: "bamMatch"),
-        Message(id: "2", content: "Match me!", tenantID: "bamMatch")
-    ]
-    
-    static var previews: some View {
-        Group {
-            MessageListView(messages: mockMessages, tenantID: "bamSocial", isDarkMode: false)
-                .previewDisplayName("bamSocial Light")
-            
-            MessageListView(messages: mockMessages, tenantID: "bamSocial", isDarkMode: true)
-                .previewDisplayName("bamSocial Dark")
-            
-            MessageListView(messages: mockMatchMessages, tenantID: "bamMatch", isDarkMode: false)
-                .previewDisplayName("bamMatch Light")
-            
-            MessageListView(messages: mockMatchMessages, tenantID: "bamMatch", isDarkMode: true)
-                .previewDisplayName("bamMatch Dark")
-        }
-        .previewLayout(.sizeThatFits)
     }
 }
