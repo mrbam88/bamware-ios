@@ -5,6 +5,7 @@
 //  Created by Bilal Malik on 3/22/25.
 //
 
+
 // AuthService.swift
 public protocol AuthService {
     var currentUser: User? { get }

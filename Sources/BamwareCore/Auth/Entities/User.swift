@@ -5,7 +5,6 @@
 //  Created by Bilal Malik on 3/22/25.
 //
 
-// User.swift
 public struct User: Entity {
     public let id: String
     public let tenantID: String
