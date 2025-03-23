@@ -1,10 +1,10 @@
 import Combine
 
-public class DefaultAuthService: AuthService {
+public class DefaultAuthService: AuthService, ObservableObject {  // Add ObservableObject
     @Published public var currentUser: User?
-    private var permissionsService: UserPermissionsService?  // Optional—set later
+    private var permissionsService: UserPermissionsService?
     
-    public init() {}  // No dep—break cycle
+    public init() {}
     
     public func setPermissionsService(_ service: UserPermissionsService) {
         self.permissionsService = service
