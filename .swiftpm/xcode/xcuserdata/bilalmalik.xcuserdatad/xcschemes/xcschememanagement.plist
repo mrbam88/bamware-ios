@@ -24,10 +24,15 @@
 			<key>orderHint</key>
 			<integer>2</integer>
 		</dict>
+		<key>BamwareMessagingTests.xcscheme_^#shared#^_</key>
+		<dict>
+			<key>orderHint</key>
+			<integer>1</integer>
+		</dict>
 		<key>BamwareUI.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>3</integer>
+			<integer>0</integer>
 		</dict>
 		<key>MyLibrary.xcscheme_^#shared#^_</key>
 		<dict>

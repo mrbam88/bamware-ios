@@ -1,0 +1,24 @@
+{
+  "originHash" : "75cd2d4763105f2e904ed441bd66785ccd3312f8cd5ad973ede930de703b5688",
+  "pins" : [
+    {
+      "identity" : "bamware-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/mrbam88/bamware-ios",
+      "state" : {
+        "branch" : "main",
+        "revision" : "d055572a1d45a2046f9f3fbdf392acb2bc6f9170"
+      }
+    },
+    {
+      "identity" : "factory",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/hmlongco/Factory",
+      "state" : {
+        "revision" : "fb04a8918848e413d3921d346a23bae7f81088d9",
+        "version" : "2.4.3"
+      }
+    }
+  ],
+  "version" : 3
+}
