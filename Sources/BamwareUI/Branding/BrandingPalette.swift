@@ -28,13 +28,13 @@ private struct BamSocialTheme: Theme {
     let backgroundColor: Color
     let font: Font
     let isDarkMode: Bool
-    
+
     init(isDarkMode: Bool) {
         self.tenantID = "bamSocial"
         self.isDarkMode = isDarkMode
         self.primaryColor = isDarkMode ? .cyan : .blue
-        self.secondaryColor = isDarkMode ? .gray : .gray
-        self.backgroundColor = isDarkMode ? .black : .white
+        self.secondaryColor = isDarkMode ? Color(white: 0.7) : .gray
+        self.backgroundColor = isDarkMode ? Color(white: 0.08) : .white
         self.font = .body
     }
 }
@@ -46,13 +46,13 @@ private struct BamMatchTheme: Theme {
     let backgroundColor: Color
     let font: Font
     let isDarkMode: Bool
-    
+
     init(isDarkMode: Bool) {
         self.tenantID = "bamMatch"
         self.isDarkMode = isDarkMode
         self.primaryColor = isDarkMode ? .pink : .red
-        self.secondaryColor = isDarkMode ? .gray : .orange
-        self.backgroundColor = isDarkMode ? .black : .white
+        self.secondaryColor = isDarkMode ? .orange.opacity(0.85) : .orange
+        self.backgroundColor = isDarkMode ? Color(white: 0.08) : .white
         self.font = .body
     }
 }
