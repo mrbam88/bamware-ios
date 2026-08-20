@@ -3,7 +3,10 @@ import PackageDescription
 
 let package = Package(
     name: "BamwareIOS",
-    platforms: [.iOS(.v17)],
+    platforms: [
+        .iOS(.v17),
+        .macOS(.v14)
+    ],
     products: [
         .library(name: "BamwareCore", targets: ["BamwareCore"]),
         .library(name: "BamwareUI", targets: ["BamwareUI"]),
