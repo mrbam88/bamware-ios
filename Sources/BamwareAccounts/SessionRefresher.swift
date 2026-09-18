@@ -15,7 +15,9 @@ public protocol AccountRefreshing: Sendable {
     /// auth-service A2 contract (`POST /auth/refresh`, rotating: the
     /// presented refresh token is single-use). Any 401 — including
     /// `refresh_reused` — surfaces as `AuthAPIError.http(statusCode: 401)`.
-    func refresh(refreshToken: String) async throws -> AuthSession
+    /// The server's refresh reply carries tokens only (`{tokens}`), so the
+    /// caller passes the signed-in user to rebuild the `AuthSession`.
+    func refresh(refreshToken: String, user: AuthUser) async throws -> AuthSession
 }
 
 extension AuthAPI: AccountRefreshing {}
@@ -133,7 +135,7 @@ public actor SessionRefresher {
 
         let refreshing = self.refreshing
         let task = Task<AuthSession, Error> {
-            try await refreshing.refresh(refreshToken: current.refreshToken)
+            try await refreshing.refresh(refreshToken: current.refreshToken, user: current.user)
         }
         inFlight = task
         defer { inFlight = nil }

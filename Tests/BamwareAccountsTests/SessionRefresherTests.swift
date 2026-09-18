@@ -59,7 +59,7 @@ import Testing
         func setGate(_ gate: @escaping @Sendable () async -> Void) { self.gate = gate }
         func setResult(_ result: Result<AuthSession, Error>) { nextResult = result }
 
-        func refresh(refreshToken: String) async throws -> AuthSession {
+        func refresh(refreshToken: String, user: AuthUser) async throws -> AuthSession {
             callCount += 1
             receivedTokens.append(refreshToken)
             if let gate { await gate() }

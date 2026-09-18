@@ -58,11 +58,37 @@ public struct AuthAPI: AccountAuthServing, Sendable {
     /// `POST /auth/refresh`. See `SessionRefresher`, which is the intended
     /// caller — it single-flights concurrent refreshes and rotates the
     /// stored pair on success.
-    public func refresh(refreshToken: String) async throws -> AuthSession {
+    /// The server replies `{tokens: {accessToken, refreshToken}}` with no
+    /// `user` (bamware-auth-service PR #15), so the session is rebuilt from
+    /// the caller's current user.
+    public func refresh(refreshToken: String, user: AuthUser) async throws -> AuthSession {
         let body = RefreshBody(refreshToken: refreshToken)
-        return try await post("/auth/refresh", body: body) { status in
-            .http(statusCode: status)
+        var request = URLRequest(url: baseURL.appendingPathComponent("/auth/refresh"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(body)
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw AuthAPIError.invalidResponse }
+        guard (200...299).contains(http.statusCode) else { throw AuthAPIError.http(statusCode: http.statusCode) }
+        do {
+            let envelope = try JSONDecoder().decode(TokensEnvelope.self, from: data)
+            return AuthSession(
+                accessToken: envelope.tokens.accessToken,
+                refreshToken: envelope.tokens.refreshToken,
+                user: user
+            )
+        } catch {
+            throw AuthAPIError.invalidResponse
         }
+    }
+
+    /// Refresh envelope: tokens only.
+    private struct TokensEnvelope: Decodable {
+        struct Tokens: Decodable {
+            let accessToken: String
+            let refreshToken: String
+        }
+        let tokens: Tokens
     }
 
     public func deleteAccount(accessToken: String) async throws {
