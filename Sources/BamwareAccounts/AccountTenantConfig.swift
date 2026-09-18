@@ -6,8 +6,8 @@ import Foundation
 /// constants and no environment branching of its own (bamware-ios#2).
 public struct AccountTenantConfig: Sendable {
     /// The tenant id the auth service partitions users by. A typo silently
-    /// creates a fresh, empty tenant partition, so apps should pin this in
-    /// their own tests the way BrewDesk pinned `BrewDeskTenant.id`.
+    /// creates a fresh, empty tenant partition, so apps should pin this
+    /// value in their own tests.
     public let tenantId: String
 
     /// Base URL of the auth service for this environment. The app decides

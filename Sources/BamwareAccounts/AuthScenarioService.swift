@@ -6,12 +6,12 @@ import Foundation
 /// system, so one in-memory auth world can back every scenario.
 ///
 /// Seeded account defaults mirror common auth-service seed scripts:
-/// `tester@bamware.com` / `BrewDesk1!` ("Test Taster"), overridable per app.
+/// `tester@bamware.com` / `Tester1!` ("Test Taster"), overridable per app.
 /// Registered accounts live for the process lifetime, so sign-out →
 /// sign-in-again works across screen instances within one launch.
 public actor AuthScenarioService: AccountAuthServing {
     public static let seededEmail = "tester@bamware.com"
-    public static let seededPassword = "BrewDesk1!"
+    public static let seededPassword = "Tester1!"
     public static let seededName = "Test Taster"
 
     private struct Account {

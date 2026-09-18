@@ -1,6 +1,6 @@
 // Shared account state machine (ADR 0001). Sign in / sign up / sign out plus
 // the ordered account deletion pattern (content → auth record → local
-// session), ported from BrewDesk's first implementation.
+// session).
 import Foundation
 import Observation
 import SwiftUI

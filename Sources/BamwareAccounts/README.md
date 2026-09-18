@@ -68,24 +68,24 @@ package's session and account logic does not read them.
 
 ## Spec-gap decisions (bamware-ios#2)
 
-Ported from BrewDesk's first implementation, minus the pieces that were
-BrewDesk-app-specific rather than part of the five named files in this
-ticket's scope:
+Ported from the first app-embedded implementation this ticket lifted out of,
+minus the pieces that were specific to that app rather than part of the five
+named files in this ticket's scope:
 
-- Dropped `AccountServiceResolver` and the `LaunchEnvironment`-driven
+- Dropped the service-resolver helper and the app-launch-environment-driven
   convenience initializers (`AccountSessionStore(environment:)`,
-  `AuthScenarioService.shared`, `AccountSessionStore.shared`).
-  `LaunchEnvironment` is BrewDesk's own `-UITestScenario` launch-argument
-  parser — an app/UI composition-root concern, not one of the five named
-  files, and this ticket puts UI/screens out of scope (B8). Apps now choose
-  and construct `AuthAPI` vs. `AuthScenarioService`, and
+  `AuthScenarioService.shared`, `AccountSessionStore.shared`). That
+  launch-environment type is the source app's own `-UITestScenario`
+  launch-argument parser — an app/UI composition-root concern, not one of the
+  five named files, and this ticket puts UI/screens out of scope (B8). Apps
+  now choose and construct `AuthAPI` vs. `AuthScenarioService`, and
   `KeychainSessionStore` vs. `InMemorySessionStore`, explicitly at their own
   composition root.
 - Removed `AuthAPI.defaultBaseURL` and its `#if DEBUG` localhost branch per
   the ticket's explicit instruction — the app always passes the URL via
   `AccountTenantConfig`.
-- Removed the `BrewDeskTenant` enum; `tenantId` comes from
-  `AccountTenantConfig` everywhere it used to be a constant.
-- Dropped the `brewDeskTenantIdNeverDrifts` test (pinned a constant that no
-  longer exists); added `AccountTenantConfigTests` and config-injection cases
-  in `AuthAPITests`/`AuthScenarioServiceTests` in its place.
+- Removed the hardcoded tenant-id constant the source app used; `tenantId`
+  comes from `AccountTenantConfig` everywhere it used to be a constant.
+- Dropped the source app's tenant-id-pin test (it pinned a constant that no
+  longer exists here); added `AccountTenantConfigTests` and config-injection
+  cases in `AuthAPITests`/`AuthScenarioServiceTests` in its place.
