@@ -32,6 +32,10 @@ final class AuthServiceTests: XCTestCase {
 private class MockAuthService: AuthService {
     private(set) var currentUser: User?
     
+    func setPermissionsService(_ service: UserPermissionsService) {
+        // No-op — mock only (protocol gained this requirement after the mock was written)
+    }
+
     func validateToken(_ token: String) async throws {
         if token == "mock-token" {
             currentUser = User(id: "1", tenantID: "bamSocial", roles: ["bamSocial:canMessage"])
