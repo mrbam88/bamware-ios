@@ -30,17 +30,25 @@ public struct AccountTenantConfig: Sendable {
     /// Same as `supportsApple`, for Google sign-in.
     public let supportsGoogle: Bool
 
+    /// Google OAuth client id for this tenant (bamware-ios#4). `nil` when
+    /// Google isn't provisioned yet — `GoogleSignInCoordinator`
+    /// (`BamwareAccountsGoogle`) reports `.unavailable` rather than calling
+    /// the SDK with an empty client id.
+    public let googleClientID: String?
+
     public init(
         tenantId: String,
         authBaseURL: URL,
         keychainService: String,
         supportsApple: Bool = false,
-        supportsGoogle: Bool = false
+        supportsGoogle: Bool = false,
+        googleClientID: String? = nil
     ) {
         self.tenantId = tenantId
         self.authBaseURL = authBaseURL
         self.keychainService = keychainService
         self.supportsApple = supportsApple
         self.supportsGoogle = supportsGoogle
+        self.googleClientID = googleClientID
     }
 }
