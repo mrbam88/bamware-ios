@@ -14,6 +14,12 @@ import Foundation
 ///   means "already gone" and is treated as success client-side, so the
 ///   deletion flow is safe to re-run after a partial failure (ordered
 ///   account deletion, see `AccountModel.deleteAccount`).
+/// - `POST /auth/refresh` `{refreshToken}` → 200 same envelope, rotated: a
+///   NEW access + refresh pair, and the presented refresh token is revoked
+///   (single use). 401 on reuse (`refresh_reused`) or any other invalid
+///   refresh token — see `SessionRefresher`, which treats any 401 here as
+///   "session ended" without needing to distinguish the specific reason
+///   (auth-service A2 contract, bamware-auth-service#10).
 public struct AuthAPI: AccountAuthServing, Sendable {
     public let baseURL: URL
     private let tenantId: String
@@ -49,6 +55,16 @@ public struct AuthAPI: AccountAuthServing, Sendable {
         }
     }
 
+    /// `POST /auth/refresh`. See `SessionRefresher`, which is the intended
+    /// caller — it single-flights concurrent refreshes and rotates the
+    /// stored pair on success.
+    public func refresh(refreshToken: String) async throws -> AuthSession {
+        let body = RefreshBody(refreshToken: refreshToken)
+        return try await post("/auth/refresh", body: body) { status in
+            .http(statusCode: status)
+        }
+    }
+
     public func deleteAccount(accessToken: String) async throws {
         var request = URLRequest(url: baseURL.appendingPathComponent("/auth/account"))
         request.httpMethod = "DELETE"
@@ -71,6 +87,10 @@ public struct AuthAPI: AccountAuthServing, Sendable {
 
     private struct LoginBody: Encodable {
         let email, password, tenantId: String
+    }
+
+    private struct RefreshBody: Encodable {
+        let refreshToken: String
     }
 
     /// The login/register response envelope. `user` decodes the subset apps

@@ -90,6 +90,27 @@ import Testing
         #expect(AuthRecordingProtocol.requests.count == 1)
     }
 
+    // MARK: - Refresh (bamware-ios#3)
+
+    @Test func refreshSendsRefreshTokenBodyAndDecodesRotatedSession() async throws {
+        let session = try await makeAPI().refresh(refreshToken: "old-refresh-token")
+
+        let request = try #require(AuthRecordingProtocol.requests.first)
+        #expect(request.method == "POST")
+        #expect(request.path == "/auth/refresh")
+        #expect(request.bodyKeys == ["refreshToken"])
+        #expect(request.contains("old-refresh-token"))
+
+        #expect(session.accessToken == "fixture-access")
+        #expect(session.refreshToken == "fixture-refresh")
+    }
+
+    @Test func refreshReuseMapsAnyRefresh401ToHTTPError() async {
+        await #expect(throws: AuthAPIError.http(statusCode: 401)) {
+            _ = try await makeAPI().refresh(refreshToken: "already-rotated-out")
+        }
+    }
+
     // MARK: - Config injection (bamware-ios#2)
 
     @Test func baseURLComesFromConfigNotAConstant() async throws {
@@ -232,6 +253,12 @@ enum AuthFixtures {
                 return (401, json(["error": "Invalid email or password"]))
             }
             return (200, envelope(email: email, name: "Fixture User", tenantId: tenantId))
+        case ("POST", "/auth/refresh"):
+            let refreshToken = bodyObject?["refreshToken"] as? String ?? ""
+            if refreshToken == "already-rotated-out" {
+                return (401, json(["error": "refresh_reused"]))
+            }
+            return (200, envelope(email: "tester@bamware.com", name: "Fixture User", tenantId: tenantId))
         case ("DELETE", "/auth/account"):
             guard request.headers["Authorization"]?.hasPrefix("Bearer ") == true else {
                 return (401, json(["error": "Missing bearer token"]))

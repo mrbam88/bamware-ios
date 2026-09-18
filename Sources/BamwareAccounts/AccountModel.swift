@@ -61,6 +61,18 @@ public final class AccountModel {
         phase = .idle
     }
 
+    /// The signed-out-on-revoke transition (bamware-ios#3): call this from
+    /// wherever an app catches `SessionRefresherError.sessionEnded` (see
+    /// `SessionRefresher` and the package README) so a server-side revoke
+    /// surfaces as a distinguishable "you were signed out" message rather
+    /// than a silently cleared session. `SessionRefresher` has already
+    /// cleared the session by the time this throws; this just puts the
+    /// reason in front of the UI.
+    public func signOutOnSessionEnd(reason: SessionEndReason) {
+        sessions.clear()
+        phase = .failed(message: Self.sessionEndedMessage(for: reason))
+    }
+
     private func run(_ operation: @escaping () async throws -> AuthSession) async {
         guard phase != .working else { return }
         phase = .working
@@ -125,6 +137,17 @@ public final class AccountModel {
             return "You look offline. Try again in a moment."
         }
         return "Couldn't reach the account service. Try again in a moment."
+    }
+
+    /// Friendly copy for `signOutOnSessionEnd`. One reason today
+    /// (`.refreshRejected`); a `switch` (not `if`) so a future
+    /// `SessionEndReason` case fails to compile here instead of silently
+    /// reusing the wrong message.
+    static func sessionEndedMessage(for reason: SessionEndReason) -> String {
+        switch reason {
+        case .refreshRejected:
+            "You were signed out because this session ended. Sign in again to continue."
+        }
     }
 }
 
