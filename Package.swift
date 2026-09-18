@@ -20,7 +20,14 @@ let package = Package(
         // depends on it.
         .library(name: "BamwareAccountsGoogle", targets: ["BamwareAccountsGoogle"]),
         // BamwarePush (bamware-ios#6): APNs registration + device client.
-        .library(name: "BamwarePush", targets: ["BamwarePush"])
+        .library(name: "BamwarePush", targets: ["BamwarePush"]),
+        // Themed account screens (bamware-ios#5). Depends inward on
+        // BamwareAccounts + BamwareUI only — never on BamwareAccountsGoogle,
+        // so this product never pulls in the GoogleSignIn-iOS dependency
+        // either; apps wire up Google's coordinator themselves at their
+        // composition root (see BamwareAccounts' README) and this package
+        // just renders whatever `AccountModel.availableProviders` reports.
+        .library(name: "BamwareAccountUI", targets: ["BamwareAccountUI"])
     ],
     // OFF by default (bamware-ios#4) — deliberately not a default trait.
     // SwiftPM resolves/fetches a trait-gated dependency for the whole
@@ -59,6 +66,12 @@ let package = Package(
         // Depends on BamwareAccounts only (bearer token via
         // PushBearerProviding/SessionRefresher) — dependencies point inward.
         .target(name: "BamwarePush", dependencies: ["BamwareAccounts"]),
-        .testTarget(name: "BamwarePushTests", dependencies: ["BamwarePush"])
+        .testTarget(name: "BamwarePushTests", dependencies: ["BamwarePush"]),
+        .target(
+            name: "BamwareAccountUI",
+            dependencies: ["BamwareAccounts", "BamwareUI"],
+            resources: [.process("Resources")]
+        ),
+        .testTarget(name: "BamwareAccountUITests", dependencies: ["BamwareAccountUI"])
     ]
 )
