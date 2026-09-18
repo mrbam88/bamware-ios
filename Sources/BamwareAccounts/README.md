@@ -6,8 +6,8 @@ ordered account deletion) shared by every Bamware app. Depends on
 `bamware-ai/docs/bamware-account-platform.md` for the platform shape this
 package is one piece of.
 
-Out of scope here (later tickets): Apple/Google sign-in (B7), themed SwiftUI
-screens (`BamwareAccountUI`, B8), push.
+Out of scope here (later tickets): themed SwiftUI screens
+(`BamwareAccountUI`, B8), push.
 
 ## Configuration
 
@@ -19,12 +19,14 @@ let config = AccountTenantConfig(
     authBaseURL: URL(string: "https://your-auth-host")!,
     keychainService: "com.yourcompany.yourapp.auth",
     supportsApple: true,
-    supportsGoogle: true
+    supportsGoogle: true,
+    googleClientID: "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com" // nil if not provisioned yet
 )
 ```
 
-`supportsApple`/`supportsGoogle` are carried for future UI (B7/B8); this
-package's session and account logic does not read them.
+`supportsApple`/`supportsGoogle` drive `AccountModel.availableProviders`
+(bamware-ios#4); `googleClientID` is read only by `GoogleSignInCoordinator`
+(`BamwareAccountsGoogle`).
 
 ## Public API
 
@@ -72,6 +74,22 @@ package's session and account logic does not read them.
   account is unusable either way). Also exposes
   `EnvironmentValues.accountAuthService` for screens that want to read an
   injected service from the SwiftUI environment.
+
+- **`SocialProvider`** — `.apple` / `.google`.
+
+- **`SocialSignInCoordinating`** — one provider's native sign-in flow seam.
+  Two conformers: **`AppleSignInCoordinator()`** (this package, iOS-only —
+  see below) and **`GoogleSignInCoordinator(clientID:)`** (the separate
+  `BamwareAccountsGoogle` product). Both resolve to a
+  `SocialSignInOutcome`: `.credential(SocialCredential)`, `.cancelled`
+  (user dismissed the native sheet — never an error), or `.unavailable(message:)`.
+
+- **`SocialAuthServing`** — the `POST /auth/social` seam. `AuthAPI` conforms
+  via `socialSignIn(provider:idToken:tenantId:name:)`.
+
+- **`AccountModel.socialSignIn: SocialSignInSupport?`** — set once by the
+  app's composition root (below); backs `AccountModel.signIn(with:
+  SocialProvider)` and `.availableProviders: [SocialProvider]`.
 
 ## Refresh contract (auth-service A2, bamware-auth-service#10)
 
@@ -125,6 +143,69 @@ gets a "you were signed out" message instead of a generic error:
 `AccountSessionStore.accessExpiresAt` decodes the stored access token's
 `exp` claim locally (base64url + `JSONDecoder`, no third-party JWT library,
 no network call) — `SessionRefresher` uses it for the proactive check.
+
+## Sign in with Apple / Google (bamware-ios#4)
+
+### Composition root wiring
+
+```swift
+import BamwareAccounts
+import BamwareAccountsGoogle // only if this app links the optional product
+
+let auth = AuthAPI(config: config)
+let model = AccountModel(auth: auth, sessions: sessions)
+
+model.socialSignIn = SocialSignInSupport(
+    config: config, // same AccountTenantConfig used above
+    coordinators: [
+        .apple: AppleSignInCoordinator(),
+        .google: GoogleSignInCoordinator(clientID: config.googleClientID)
+    ],
+    socialAuth: auth // AuthAPI conforms to SocialAuthServing
+)
+```
+
+An app that doesn't offer Google simply omits the `.google` entry (and the
+`BamwareAccountsGoogle` import/dependency entirely) — `availableProviders`
+hides it automatically, and `AuthAPI+SocialSignIn.swift`'s
+`socialSignIn(...)` overload used above always uses `URLSession.shared`
+under the hood (the instance's own injected `session` is private and
+unreachable from this ticket's new files — see that file's doc comment for
+why); apps that need to intercept it should call the `session:` overload on
+the concrete `AuthAPI` instance directly.
+
+### Linking the optional Google product (Human-only)
+
+`BamwareAccountsGoogle` depends on `GoogleSignIn-iOS`, gated behind this
+package's `GoogleSignIn` SwiftPM trait (off by default) so an app that
+never links the product never resolves that dependency at all:
+
+1. Add the `BamwareAccountsGoogle` product to the app target in Xcode's
+   Package Dependencies UI (or the app's own `Package.swift`, if it
+   consumes this package as a local/remote dependency).
+2. Enable the `GoogleSignIn` trait for this package in the same UI (or pass
+   `.package(..., traits: ["GoogleSignIn"])` from the consuming manifest) —
+   otherwise `GoogleSignInCoordinator.signIn()` compiles but always reports
+   `.unavailable` (see that type's doc comment).
+
+### Human-only setup the consuming app must add
+
+- **Xcode capability:** Target → *Signing & Capabilities* → **+ Capability**
+  → **Sign in with Apple**. Required for `AppleSignInCoordinator` — without
+  it, `ASAuthorizationController` fails at runtime even though everything
+  compiles.
+- **Info.plist (Google only):**
+  - A **URL Type** whose **URL Scheme** is the *reversed client ID* (the
+    `REVERSED_CLIENT_ID` from the app's `GoogleService-Info.plist`/Google
+    Cloud console entry, e.g.
+    `com.googleusercontent.apps.1234567890-abcdefg`). Required for the
+    Google sign-in sheet to return control to the app.
+  - Optionally a top-level `GIDClientID` string key with the same client id
+    passed to `AccountTenantConfig.googleClientID` — not required by this
+    package (the client id is always passed explicitly via
+    `GoogleSignInCoordinator(clientID:)`), but some Google-side flows
+    (`restorePreviousSignIn`) expect it; add it for consistency with
+    Google's own setup guide.
 
 ## Spec-gap decisions (bamware-ios#2)
 
@@ -194,3 +275,63 @@ named files in this ticket's scope:
   (`AuthAPITests.refreshSendsRefreshTokenBodyAndDecodesRotatedSession`) pins
   the envelope shape login/register already use, which is the safest
   assumption but unverified against a live/merged server implementation.
+
+## Spec-gap decisions (bamware-ios#4)
+
+- **`AccountModel` needed two small, direct edits, not just a new-file
+  extension.** A `final class`'s stored state and a `private(set)` setter
+  can't be added from another file — Swift `private`/stored-property rules
+  are file/type-scoped. So `AccountModel.swift` itself gained exactly two
+  things: the `public var socialSignIn: SocialSignInSupport?` property and
+  an internal `setPhaseForSocialSignIn(_:)` helper so
+  `AccountModel+SocialSignIn.swift` can drive `phase` without a public
+  setter. Everything else — the type, `signIn(with:)`,
+  `availableProviders` — lives in the new file. `AccountModel.swift`'s
+  existing password paths are otherwise untouched.
+- **`AuthAPI.socialSignIn` takes `tenantId`/`session` as explicit
+  parameters**, unlike `register`/`signIn`. `AuthAPI.swift` is out of scope
+  for this ticket (bamware-ios#3 owns it) and its `tenantId`/`session`
+  storage is `private` — file-scoped, so a same-type extension in a
+  different file has no access to it. The protocol-satisfying overload
+  defaults `session` to `.shared`; a second overload takes an explicit
+  `session:` for callers (tests, or a composition root) that want the same
+  interceptable session used elsewhere.
+- **`BamwareAccountsGoogle` is gated behind a new `GoogleSignIn` SwiftPM
+  trait (SE-0450), off by default** — bumping `swift-tools-version` from
+  6.0 to 6.1. Plain unconditional dependency declaration was tried first
+  and rejected: SwiftPM resolves/fetches a package-level dependency for the
+  *whole* manifest graph on any invocation, regardless of `--target`, so
+  `swift build --target BamwareAccounts` fetched the entire GoogleSignIn-iOS
+  tree even though nothing in that target imports it. With the trait off by
+  default, that fetch simply doesn't happen for `swift build --target
+  BamwareAccounts` or a plain `swift test`. The tradeoff: trait activation
+  is also whole-graph, not per-target, so `swift build --target
+  BamwareAccountsGoogle` *by itself* (no flags) only builds the stub below
+  — exercising the real SDK requires `swift build --target
+  BamwareAccountsGoogle --traits GoogleSignIn` explicitly. Quoted in the
+  PR description.
+- **`GoogleSignInCoordinator` degrades to a stub when the trait isn't
+  active**, via `#if canImport(GoogleSignIn)`: `signIn()` always reports
+  `.unavailable` and no Google symbol is referenced. This is what lets
+  `BamwareAccountsGoogle` and `BamwareAccountsGoogleTests` build and pass
+  under a plain, unscoped `swift test` (default traits) without ever
+  linking the SDK — the alternative (making the target itself
+  conditionally excluded from the package) isn't something SwiftPM
+  supports for test targets.
+- **`AppleSignInCoordinator` sends an Apple-recommended nonce
+  (SHA256-hashed, random) even though bamware-auth-service doesn't verify
+  the identity token's `nonce` claim yet** (`socialAuthService.ts`'s
+  `verifySocialIdToken` checks `iss`/`aud`/`sub`/`email` only). This is the
+  client-side half of Apple's replay-protection pattern regardless, so
+  server-side verification can be added later with no client change.
+- **Neither coordinator's interactive flow could be exercised for real in
+  this environment** — no signed device/simulator run, no presented
+  window. Both are covered by mocked-coordinator tests
+  (`AccountModelSocialSignInTests`) for the behavior contract (cancel,
+  unavailable, credential → token exchange, name/email handling); the
+  actual `ASAuthorizationController`/`GIDSignIn` integration is
+  compile-verified only (the Apple coordinator via a supplementary
+  iOS-simulator `swiftc -typecheck` pass since the required gates run on
+  the macOS host and never compile its `#if os(iOS)` body; the Google
+  coordinator via gate 3's real `--traits GoogleSignIn` build, which does
+  compile against the real SDK). **Unverified beyond that.**

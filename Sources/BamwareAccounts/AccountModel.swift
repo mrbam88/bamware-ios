@@ -31,6 +31,22 @@ public final class AccountModel {
     public private(set) var phase: Phase = .idle
     public let sessions: AccountSessionStore
 
+    /// Sign in with Apple/Google support (bamware-ios#4), set once by the
+    /// app's composition root; `nil` means the feature isn't wired up.
+    /// Stored here (not purely via extension) because a `final class`'s
+    /// state can't be added from another file — everything else (the type,
+    /// `signIn(with:)`, `availableProviders`) lives in
+    /// `AccountModel+SocialSignIn.swift`.
+    public var socialSignIn: SocialSignInSupport?
+
+    /// Lets `AccountModel+SocialSignIn.swift` (same module, different file)
+    /// drive `phase` — its setter above is `private`, file-scoped, and
+    /// stays that way; this is the one bit of same-module access the
+    /// social sign-in extension needs.
+    func setPhaseForSocialSignIn(_ newPhase: Phase) {
+        phase = newPhase
+    }
+
     private let auth: any AccountAuthServing
     private let content: any AccountContentDeleting
 
