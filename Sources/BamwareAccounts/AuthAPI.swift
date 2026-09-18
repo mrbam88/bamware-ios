@@ -1,10 +1,9 @@
-// Lifted verbatim from bamware-brewdesk/Packages/BrewDeskKit/Sources/VenueKit/AuthAPI.swift
-// (bamware-ios#2: BamwareAccounts). Not yet generalized — see later commits.
-//
 import Foundation
 
-/// Async client for bamware-auth-service (brewdesk#48). Same shape discipline
-/// as `VenueAPI`: compile-time base URL, fail-fast session, typed errors.
+/// Async client for bamware-auth-service. Compile-time-free base URL and
+/// tenant id (both come from `AccountTenantConfig` — apps decide debug vs.
+/// release vs. staging hosts; this package never branches on `#if DEBUG`),
+/// fail-fast session, typed errors.
 ///
 /// Endpoint contract (auth-service `src/handlers/authHandler.ts`):
 /// - `POST /auth/register` `{email, password, name, tenantId}` → 201
@@ -13,33 +12,23 @@ import Foundation
 ///   401 invalid credentials.
 /// - `DELETE /auth/account` (Bearer) → 200 `{ok:true}`; idempotent — a 404
 ///   means "already gone" and is treated as success client-side, so the
-///   deletion flow is safe to re-run after a partial failure (Baat's
-///   ordered-deletion pattern, dating-app #18).
+///   deletion flow is safe to re-run after a partial failure (ordered
+///   account deletion, see `AccountModel.deleteAccount`).
 public struct AuthAPI: AccountAuthServing, Sendable {
-    /// Debug talks to a local `pnpm dev` auth service (PORT=3001 per its
-    /// .env.example); Release talks to the deployed dev-stage Lambda — the
-    /// only deployed instance today (flagged on the #48 PR: revisit when a
-    /// prod stage exists).
-    public static var defaultBaseURL: URL {
-        #if DEBUG
-        URL(string: "http://localhost:3001")!
-        #else
-        URL(string: "https://cje3ppxv47.execute-api.us-east-1.amazonaws.com")!
-        #endif
-    }
-
     public let baseURL: URL
+    private let tenantId: String
     private let session: URLSession
 
-    public init(baseURL: URL = AuthAPI.defaultBaseURL, session: URLSession = VenueAPI.defaultSession) {
-        self.baseURL = baseURL
+    public init(config: AccountTenantConfig, session: URLSession = .shared) {
+        self.baseURL = config.authBaseURL
+        self.tenantId = config.tenantId
         self.session = session
     }
 
     // MARK: - AccountAuthServing
 
     public func register(email: String, password: String, name: String) async throws -> AuthSession {
-        let body = RegisterBody(email: email, password: password, name: name, tenantId: BrewDeskTenant.id)
+        let body = RegisterBody(email: email, password: password, name: name, tenantId: tenantId)
         return try await post("/auth/register", body: body) { status in
             switch status {
             case 409: AuthAPIError.emailAlreadyRegistered
@@ -50,7 +39,7 @@ public struct AuthAPI: AccountAuthServing, Sendable {
     }
 
     public func signIn(email: String, password: String) async throws -> AuthSession {
-        let body = LoginBody(email: email, password: password, tenantId: BrewDeskTenant.id)
+        let body = LoginBody(email: email, password: password, tenantId: tenantId)
         return try await post("/auth/login", body: body) { status in
             switch status {
             case 401: AuthAPIError.invalidCredentials
@@ -84,8 +73,8 @@ public struct AuthAPI: AccountAuthServing, Sendable {
         let email, password, tenantId: String
     }
 
-    /// The login/register response envelope. `user` decodes the subset the
-    /// app needs (see `AuthUser`).
+    /// The login/register response envelope. `user` decodes the subset apps
+    /// need (see `AuthUser`).
     private struct SessionEnvelope: Decodable {
         struct Tokens: Decodable {
             let accessToken: String

@@ -1,26 +1,16 @@
-// Lifted verbatim from bamware-brewdesk/Packages/BrewDeskKit/Sources/VenueKit/AuthContract.swift
-// (bamware-ios#2: BamwareAccounts). Not yet generalized — see later commits.
-//
 import Foundation
 
-// BrewDesk accounts (brewdesk#48, Apple 1.2 UGC compliance pack).
+// Shared account platform (ADR 0001, bamware-ai/docs/bamware-account-platform.md).
 //
-// Accounts are OPTIONAL: the whole app works anonymously; an account only
-// gates community submissions (future). Auth is served by bamware-auth-service
-// (multi-tenant, bcrypt + JWT). BrewDesk is the `bamware-brewdesk` tenant —
-// see the auth-service AGENTS.md "Tenants" section; onboarding was
-// config-not-code (auth-service PR #6).
-
-/// The one place BrewDesk's tenant identity lives. A typo here would silently
-/// create a fresh, isolated tenant partition on the auth service — pinned by
-/// package tests so it can never drift.
-public enum BrewDeskTenant {
-    public static let id = "bamware-brewdesk"
-}
+// Accounts are OPTIONAL for any consuming app: everything works
+// anonymously; an account only gates whatever the app decides needs one
+// (e.g. community submissions). Auth is served by bamware-auth-service (one
+// multi-tenant API, bcrypt + JWT, `tenantId` per app) — see
+// `AccountTenantConfig`.
 
 /// The signed-in user, as returned by the auth service. The service sends
-/// more keys (role, createdAt, schemaVersion, …); we decode only what the
-/// app displays so additive server changes never break the client.
+/// more keys (role, createdAt, schemaVersion, …); we decode only what apps
+/// display so additive server changes never break the client.
 public struct AuthUser: Codable, Hashable, Sendable {
     public let userId: String
     public let email: String
@@ -74,9 +64,8 @@ public enum AuthAPIError: Error, Equatable, LocalizedError {
 }
 
 /// Seam for the auth-service client. Live: `AuthAPI`. Deterministic
-/// (UI tests / previews): `AuthScenarioService`. Resolved screen-side via
-/// `AccountServiceResolver` so the composition root stays untouched
-/// (same pattern as `ObservationServiceResolver`).
+/// (UI tests / previews): `AuthScenarioService`. Apps resolve which one to
+/// use at their composition root.
 public protocol AccountAuthServing: Sendable {
     func register(email: String, password: String, name: String) async throws -> AuthSession
     func signIn(email: String, password: String) async throws -> AuthSession
@@ -88,17 +77,17 @@ public protocol AccountAuthServing: Sendable {
 /// delete the user's app content BEFORE the auth record, because deleting the
 /// auth record kills the very token the content deletion needs.
 ///
-/// BrewDesk v1 stores NO server-side user content (community submissions are
-/// anonymous per-install UUIDs — `ObservationSubmitterIdentity`). When
-/// account-attributed submissions ship, the venue-engine content cascade
-/// implements this protocol; the ordering is already pinned by
-/// `AccountModelTests` so it cannot regress.
+/// Apps that store no server-side user content can use `NoUserContentService`
+/// (a documented no-op). Apps that do implement this protocol with their own
+/// content-cascade service; the ordering is pinned by `AccountModelTests` so
+/// it cannot regress.
 public protocol AccountContentDeleting: Sendable {
     func deleteUserContent(accessToken: String) async throws
 }
 
-/// v1: nothing to delete — documented no-op (see `AccountContentDeleting`).
-public struct NoUserContentService: AccountContentDeleting {
+/// No server-side user content to delete — documented no-op (see
+/// `AccountContentDeleting`).
+public struct NoUserContentService: AccountContentDeleting, Sendable {
     public init() {}
     public func deleteUserContent(accessToken: String) async throws {}
 }

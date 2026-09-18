@@ -1,43 +1,41 @@
-// Lifted verbatim from bamware-brewdesk/Packages/BrewDeskKit/Sources/VenueKit/AuthScenarioService.swift
-// (bamware-ios#2: BamwareAccounts). Not yet generalized — see later commits.
-//
 import Foundation
 
-/// Deterministic stand-in for `AuthAPI`, mirroring `ScenarioVenueService`'s
-/// role for the venue engine: no network, no persistence, fresh per process.
-/// The app resolves it (via `AccountServiceResolver`) whenever it is launched
-/// with `-UITestScenario <name>` — account flows are orthogonal to the venue
-/// scenarios, so every scenario shares this one in-memory auth world.
+/// Deterministic stand-in for `AuthAPI`: no network, no persistence, fresh
+/// per process. Apps resolve it in place of `AuthAPI` for UI tests and
+/// previews — account flows are orthogonal to any app-specific scenario
+/// system, so one in-memory auth world can back every scenario.
 ///
-/// Seeded account (mirrors auth-service `src/scripts/seed.ts` style):
-/// `tester@bamware.com` / `BrewDesk1!` ("Test Taster"). Registered accounts
-/// live for the process lifetime via `shared`, so sign-out → sign-in-again
-/// works across screen instances within one UI test launch.
+/// Seeded account defaults mirror common auth-service seed scripts:
+/// `tester@bamware.com` / `BrewDesk1!` ("Test Taster"), overridable per app.
+/// Registered accounts live for the process lifetime, so sign-out →
+/// sign-in-again works across screen instances within one launch.
 public actor AuthScenarioService: AccountAuthServing {
     public static let seededEmail = "tester@bamware.com"
     public static let seededPassword = "BrewDesk1!"
     public static let seededName = "Test Taster"
-
-    /// Process-wide instance for scenario launches (fresh per app launch —
-    /// each UI test starts a new process). Package tests construct their own.
-    public static let shared = AuthScenarioService()
 
     private struct Account {
         let user: AuthUser
         let password: String
     }
 
+    private let tenantId: String
     private var accountsByEmail: [String: Account] = [:]
     private var emailByAccessToken: [String: String] = [:]
     private var counter = 0
 
-    public init(seeded: Bool = true) {
+    /// - Parameters:
+    ///   - tenantId: the tenant id seeded/registered users are stamped with
+    ///     (from `AccountTenantConfig.tenantId`).
+    ///   - seeded: whether to pre-populate the default seeded account.
+    public init(tenantId: String, seeded: Bool = true) {
+        self.tenantId = tenantId
         if seeded {
             let user = AuthUser(
                 userId: "scenario-user-seeded",
                 email: Self.seededEmail,
                 name: Self.seededName,
-                tenantId: BrewDeskTenant.id
+                tenantId: tenantId
             )
             accountsByEmail[Self.seededEmail] = Account(user: user, password: Self.seededPassword)
         }
@@ -52,7 +50,7 @@ public actor AuthScenarioService: AccountAuthServing {
             userId: "scenario-user-\(counter)",
             email: key,
             name: name,
-            tenantId: BrewDeskTenant.id
+            tenantId: tenantId
         )
         accountsByEmail[key] = Account(user: user, password: password)
         return session(for: user)

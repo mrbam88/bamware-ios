@@ -1,9 +1,6 @@
-// Lifted verbatim from bamware-brewdesk/Packages/BrewDeskKit/Sources/BrewDeskKit/AccountSessionStore.swift
-// (bamware-ios#2: BamwareAccounts). Not yet generalized — see later commits.
-//
 import Foundation
+import Observation
 import Security
-import VenueKit
 
 /// Where the signed-in session is kept between launches.
 public protocol AuthSessionPersisting: AnyObject, Sendable {
@@ -16,10 +13,15 @@ public protocol AuthSessionPersisting: AnyObject, Sendable {
 /// sync). Tokens never touch UserDefaults — the keychain survives reinstalls
 /// less predictably but is the only right place for bearer tokens.
 public final class KeychainSessionStore: AuthSessionPersisting {
-    private let service = "io.bamware.brewdesk.auth"
+    private let service: String
     private let account = "session"
 
-    public init() {}
+    /// - Parameter service: the `kSecAttrService` value sessions are scoped
+    ///   under (from `AccountTenantConfig.keychainService`). Should be
+    ///   unique per app so two tenant apps on one device never collide.
+    public init(service: String) {
+        self.service = service
+    }
 
     private var baseQuery: [String: Any] {
         [
@@ -71,28 +73,18 @@ public final class InMemorySessionStore: AuthSessionPersisting, @unchecked Senda
     public func clear() { lock.withLock { session = nil } }
 }
 
-/// App-wide signed-in state. One instance (`shared`) backs every account
-/// screen; `@Observable` so signed-in/out UI flips live.
+/// App-wide signed-in state. `@Observable` so signed-in/out UI flips live.
+/// Apps own the instance (and its lifetime/injection) — this package does
+/// not vend a singleton, since which persistence backend to use is a
+/// per-app, per-launch-mode decision.
 @Observable
 public final class AccountSessionStore {
-    public static let shared = AccountSessionStore()
-
     public private(set) var session: AuthSession?
     private let persistence: any AuthSessionPersisting
 
     public init(persistence: any AuthSessionPersisting) {
         self.persistence = persistence
         session = persistence.load()
-    }
-
-    /// Scenario launches get in-memory persistence (fresh per process);
-    /// normal launches get the keychain.
-    public convenience init(environment: LaunchEnvironment = .current) {
-        if environment.scenario != nil {
-            self.init(persistence: InMemorySessionStore())
-        } else {
-            self.init(persistence: KeychainSessionStore())
-        }
     }
 
     public var isSignedIn: Bool { session != nil }

@@ -1,14 +1,12 @@
-// Lifted verbatim from bamware-brewdesk/Packages/BrewDeskKit/Sources/BrewDeskKit/AccountModel.swift
-// (bamware-ios#2: BamwareAccounts). Not yet generalized — see later commits.
-//
-// BrewDesk accounts (brewdesk#48). Sign in / sign up / sign out plus the
-// ordered account deletion ported from Baat (dating-app #18, Apple 5.1.1(v)).
+// Shared account state machine (ADR 0001). Sign in / sign up / sign out plus
+// the ordered account deletion pattern (content → auth record → local
+// session), ported from BrewDesk's first implementation.
 import Foundation
+import Observation
 import SwiftUI
-import VenueKit
 
-/// Drives the account screens. All transition rules live here so they are
-/// unit-testable without UI (same policy as `ObservationFormModel`).
+/// Drives account screens. All transition rules live here so they are
+/// unit-testable without UI.
 @Observable
 public final class AccountModel {
     public enum Phase: Equatable {
@@ -75,7 +73,7 @@ public final class AccountModel {
         }
     }
 
-    // MARK: - Ordered account deletion (Baat's pattern, dating-app #18)
+    // MARK: - Ordered account deletion
 
     /// Order matters: app content first, then the auth record (deleting it
     /// breaks refresh/re-login — so it must go last, and before local tokens
@@ -132,10 +130,10 @@ public final class AccountModel {
 
 // MARK: - Service injection
 
-/// Optional-first auth service injection, mirroring `\.venueObservationService`:
-/// screens read it from the environment; nil (the default) means the screen
-/// resolves `AccountServiceResolver.resolve()` on first appearance. Resolved
-/// screen-side so the feature stays additive to the composition root.
+/// Optional-first auth service injection: screens read it from the
+/// environment; nil (the default) means the screen resolves its own
+/// `AccountAuthServing` at the app's composition root. Resolved screen-side
+/// so the feature stays additive to whatever composes the app.
 private struct AccountAuthServiceKey: EnvironmentKey {
     static let defaultValue: (any AccountAuthServing)? = nil
 }
@@ -144,19 +142,5 @@ extension EnvironmentValues {
     public var accountAuthService: (any AccountAuthServing)? {
         get { self[AccountAuthServiceKey.self] }
         set { self[AccountAuthServiceKey.self] = newValue }
-    }
-}
-
-/// Same `-UITestScenario` launch-argument contract as
-/// `ObservationServiceResolver`: scenario launches get the deterministic
-/// in-process `AuthScenarioService`, every normal launch gets `AuthAPI`.
-public enum AccountServiceResolver {
-    public static func resolve(
-        environment: LaunchEnvironment = .current
-    ) -> any AccountAuthServing {
-        if environment.scenario != nil {
-            return AuthScenarioService.shared
-        }
-        return AuthAPI()
     }
 }
