@@ -90,6 +90,32 @@ import Testing
         #expect(AuthRecordingProtocol.requests.count == 1)
     }
 
+    // MARK: - Refresh (bamware-ios#3)
+
+    @Test func refreshSendsRefreshTokenBodyAndDecodesRotatedSession() async throws {
+        let currentUser = AuthUser(userId: "user-current", email: "current@bamware.com", name: "Current", tenantId: Self.tenantId)
+        let session = try await makeAPI().refresh(refreshToken: "old-refresh-token", user: currentUser)
+
+        let request = try #require(AuthRecordingProtocol.requests.first)
+        #expect(request.method == "POST")
+        #expect(request.path == "/auth/refresh")
+        #expect(request.bodyKeys == ["refreshToken"])
+        #expect(request.contains("old-refresh-token"))
+
+        #expect(session.accessToken == "fixture-access")
+        #expect(session.refreshToken == "fixture-refresh")
+        #expect(session.user.userId == "user-current", "refresh keeps the signed-in user")
+    }
+
+    @Test func refreshReuseMapsAnyRefresh401ToHTTPError() async {
+        await #expect(throws: AuthAPIError.http(statusCode: 401)) {
+            _ = try await makeAPI().refresh(
+                refreshToken: "already-rotated-out",
+                user: AuthUser(userId: "u", email: "u@bamware.com", name: "U", tenantId: Self.tenantId)
+            )
+        }
+    }
+
     // MARK: - Config injection (bamware-ios#2)
 
     @Test func baseURLComesFromConfigNotAConstant() async throws {
@@ -232,6 +258,13 @@ enum AuthFixtures {
                 return (401, json(["error": "Invalid email or password"]))
             }
             return (200, envelope(email: email, name: "Fixture User", tenantId: tenantId))
+        case ("POST", "/auth/refresh"):
+            let refreshToken = bodyObject?["refreshToken"] as? String ?? ""
+            if refreshToken == "already-rotated-out" {
+                return (401, json(["error": "refresh_reused"]))
+            }
+            // Real server reply (auth-service PR #15): tokens only, no user.
+            return (200, json(["tokens": ["accessToken": "fixture-access", "refreshToken": "fixture-refresh"]]))
         case ("DELETE", "/auth/account"):
             guard request.headers["Authorization"]?.hasPrefix("Bearer ") == true else {
                 return (401, json(["error": "Missing bearer token"]))

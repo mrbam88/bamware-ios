@@ -14,6 +14,12 @@ import Foundation
 ///   means "already gone" and is treated as success client-side, so the
 ///   deletion flow is safe to re-run after a partial failure (ordered
 ///   account deletion, see `AccountModel.deleteAccount`).
+/// - `POST /auth/refresh` `{refreshToken}` → 200 same envelope, rotated: a
+///   NEW access + refresh pair, and the presented refresh token is revoked
+///   (single use). 401 on reuse (`refresh_reused`) or any other invalid
+///   refresh token — see `SessionRefresher`, which treats any 401 here as
+///   "session ended" without needing to distinguish the specific reason
+///   (auth-service A2 contract, bamware-auth-service#10).
 public struct AuthAPI: AccountAuthServing, Sendable {
     public let baseURL: URL
     private let tenantId: String
@@ -49,6 +55,42 @@ public struct AuthAPI: AccountAuthServing, Sendable {
         }
     }
 
+    /// `POST /auth/refresh`. See `SessionRefresher`, which is the intended
+    /// caller — it single-flights concurrent refreshes and rotates the
+    /// stored pair on success.
+    /// The server replies `{tokens: {accessToken, refreshToken}}` with no
+    /// `user` (bamware-auth-service PR #15), so the session is rebuilt from
+    /// the caller's current user.
+    public func refresh(refreshToken: String, user: AuthUser) async throws -> AuthSession {
+        let body = RefreshBody(refreshToken: refreshToken)
+        var request = URLRequest(url: baseURL.appendingPathComponent("/auth/refresh"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(body)
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw AuthAPIError.invalidResponse }
+        guard (200...299).contains(http.statusCode) else { throw AuthAPIError.http(statusCode: http.statusCode) }
+        do {
+            let envelope = try JSONDecoder().decode(TokensEnvelope.self, from: data)
+            return AuthSession(
+                accessToken: envelope.tokens.accessToken,
+                refreshToken: envelope.tokens.refreshToken,
+                user: user
+            )
+        } catch {
+            throw AuthAPIError.invalidResponse
+        }
+    }
+
+    /// Refresh envelope: tokens only.
+    private struct TokensEnvelope: Decodable {
+        struct Tokens: Decodable {
+            let accessToken: String
+            let refreshToken: String
+        }
+        let tokens: Tokens
+    }
+
     public func deleteAccount(accessToken: String) async throws {
         var request = URLRequest(url: baseURL.appendingPathComponent("/auth/account"))
         request.httpMethod = "DELETE"
@@ -71,6 +113,10 @@ public struct AuthAPI: AccountAuthServing, Sendable {
 
     private struct LoginBody: Encodable {
         let email, password, tenantId: String
+    }
+
+    private struct RefreshBody: Encodable {
+        let refreshToken: String
     }
 
     /// The login/register response envelope. `user` decodes the subset apps

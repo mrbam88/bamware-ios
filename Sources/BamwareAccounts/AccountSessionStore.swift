@@ -77,25 +77,50 @@ public final class InMemorySessionStore: AuthSessionPersisting, @unchecked Senda
 /// Apps own the instance (and its lifetime/injection) — this package does
 /// not vend a singleton, since which persistence backend to use is a
 /// per-app, per-launch-mode decision.
+///
+/// `session` is lock-guarded (bamware-ios#3): `SessionRefresher` is an actor
+/// and stores/clears sessions from a background refresh, concurrently with
+/// whatever isolation domain the app's UI reads it from. `@unchecked
+/// Sendable` is the manual guarantee for that — every access to `session`
+/// goes through `lock`.
 @Observable
-public final class AccountSessionStore {
-    public private(set) var session: AuthSession?
-    private let persistence: any AuthSessionPersisting
+public final class AccountSessionStore: @unchecked Sendable {
+    @ObservationIgnored private let lock = NSLock()
+    @ObservationIgnored private var _session: AuthSession?
+    @ObservationIgnored private let persistence: any AuthSessionPersisting
 
     public init(persistence: any AuthSessionPersisting) {
         self.persistence = persistence
-        session = persistence.load()
+        _session = persistence.load()
+    }
+
+    /// Manually tracked (`access`/`withMutation`) rather than a plain
+    /// `@Observable`-instrumented stored property, since the backing value
+    /// is lock-guarded for cross-actor writes from `SessionRefresher`.
+    public var session: AuthSession? {
+        access(keyPath: \.session)
+        return lock.withLock { _session }
     }
 
     public var isSignedIn: Bool { session != nil }
 
+    /// The stored access token's `exp` claim, decoded locally (no network
+    /// call) — nil when signed out or the token cannot be decoded.
+    public var accessExpiresAt: Date? {
+        session.flatMap { JWTExpiry.expiresAt($0.accessToken) }
+    }
+
     public func store(_ session: AuthSession) {
-        self.session = session
+        withMutation(keyPath: \.session) {
+            lock.withLock { _session = session }
+        }
         persistence.save(session)
     }
 
     public func clear() {
-        session = nil
+        withMutation(keyPath: \.session) {
+            lock.withLock { _session = nil }
+        }
         persistence.clear()
     }
 }
