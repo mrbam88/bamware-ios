@@ -40,6 +40,10 @@ private class MockAuthService: AuthService {
         self.currentUser = currentUser
     }
     
+    func setPermissionsService(_ service: UserPermissionsService) {
+        // No-op — mock only (protocol gained this requirement after the mock was written)
+    }
+
     func validateToken(_ token: String) async throws {
         // No-op—mock only
     }
