@@ -17,6 +17,11 @@ public struct SignInScreen: View {
     @State private var email = ""
     @State private var password = ""
     @State private var name = ""
+    /// Which provider the current social sign-in button tap started, purely
+    /// so `busyOverlay` can show provider-aware copy (bamware-ios#12).
+    /// `AccountModel` doesn't track this itself — it only needs to tell the
+    /// two social waits apart via `socialStep`, not remember which provider.
+    @State private var activeSocialProvider: SocialProvider?
 
     public init(model: AccountModel, theme: any Theme) {
         self.model = model
@@ -24,54 +29,96 @@ public struct SignInScreen: View {
     }
 
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                header
+        ZStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    header
 
-                let providers = SocialButtonsLayout.visibleProviders(from: model.availableProviders)
-                if !providers.isEmpty {
-                    VStack(spacing: 12) {
-                        ForEach(providers, id: \.self) { provider in
-                            SocialSignInButton(
-                                provider: provider,
-                                theme: theme,
-                                isDisabled: model.isWorking
-                            ) {
-                                let box = model.uncheckedSendableBox
-                                Task { await box.value.signIn(with: provider) }
+                    let providers = SocialButtonsLayout.visibleProviders(from: model.availableProviders)
+                    if !providers.isEmpty {
+                        VStack(spacing: 12) {
+                            ForEach(providers, id: \.self) { provider in
+                                SocialSignInButton(
+                                    provider: provider,
+                                    theme: theme,
+                                    isDisabled: model.isWorking
+                                ) {
+                                    activeSocialProvider = provider
+                                    let box = model.uncheckedSendableBox
+                                    Task {
+                                        await box.value.signIn(with: provider)
+                                        activeSocialProvider = nil
+                                    }
+                                }
                             }
                         }
                     }
-                }
 
-                if !isEmailFormExpanded {
-                    Button {
-                        isEmailFormExpanded = true
-                    } label: {
-                        Text("Continue with Email", bundle: .module)
-                            .font(theme.font)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
+                    if !isEmailFormExpanded {
+                        Button {
+                            isEmailFormExpanded = true
+                        } label: {
+                            Text("Continue with Email", bundle: .module)
+                                .font(theme.font)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(theme.secondaryColor)
+                        .accessibilityIdentifier("account-sign-in-email")
+                    } else {
+                        emailForm
                     }
-                    .buttonStyle(.bordered)
-                    .tint(theme.secondaryColor)
-                    .accessibilityIdentifier("account-sign-in-email")
-                } else {
-                    emailForm
-                }
 
-                modeToggle
+                    modeToggle
 
-                if case .failed(let message) = model.phase {
-                    Text(message)
-                        .font(.footnote)
-                        .foregroundStyle(theme.secondaryColor)
-                        .accessibilityIdentifier("account-sign-in-error")
+                    if case .failed(let message) = model.phase {
+                        Text(message)
+                            .font(.footnote)
+                            .foregroundStyle(theme.secondaryColor)
+                            .accessibilityIdentifier("account-sign-in-error")
+                    }
                 }
+                .padding(24)
+            }
+            .background(theme.backgroundColor)
+            // Absorbs taps on everything underneath while the overlay is up
+            // (bamware-ios#12) — belt-and-suspenders alongside the overlay
+            // itself, which also sits on top and intercepts hits.
+            .disabled(isExchangingSocialToken)
+
+            if isExchangingSocialToken {
+                busyOverlay
+            }
+        }
+    }
+
+    /// True only for the leg of social sign-in that has nothing else on
+    /// screen to show progress (bamware-ios#12) — the native Apple/Google
+    /// sheet (`.waitingForProvider`) already IS the busy state, so no
+    /// overlay is drawn for it.
+    private var isExchangingSocialToken: Bool {
+        model.socialStep == .exchangingToken
+    }
+
+    private var busyOverlay: some View {
+        let message = SocialSignInBusyCopy.message(for: activeSocialProvider)
+        return ZStack {
+            Color.black.opacity(0.15)
+                .ignoresSafeArea()
+            VStack(spacing: 12) {
+                ProgressView()
+                Text(message)
+                    .font(theme.font)
+                    .foregroundStyle(theme.primaryColor)
             }
             .padding(24)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
         }
-        .background(theme.backgroundColor)
+        .transition(.opacity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(message)
+        .accessibilityIdentifier("account-sign-in-busy-overlay")
     }
 
     private var header: some View {
