@@ -52,6 +52,10 @@ struct SocialSignInButton: View {
         .buttonStyle(.borderedProminent)
         .tint(theme.primaryColor)
         .disabled(isDisabled)
+        // Explicit dim on top of the disabled state (bamware-ios#12) —
+        // opacity only, never a red/green cue, so the "sign-in is busy"
+        // signal is visible without relying on color.
+        .opacity(isDisabled ? 0.55 : 1)
         .accessibilityIdentifier(accessibilityIdentifier)
     }
 

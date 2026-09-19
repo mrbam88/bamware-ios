@@ -15,6 +15,46 @@ import Testing
         func signIn() async -> SocialSignInOutcome { outcome }
     }
 
+    /// `@unchecked Sendable` box so a test can read `model.socialStep` from
+    /// inside a `SocialSignInCoordinating`/`SocialAuthServing` conformer's
+    /// `async` method (bamware-ios#12) — same trick as
+    /// `BamwareAccountUI`'s `UncheckedSendableBox`, reproduced locally
+    /// since that type isn't exported from this package. Safe here for the
+    /// same reason it's safe there: everything in this test runs on one
+    /// thread, there's no concurrent access to `model`.
+    private struct TestBox<Value>: @unchecked Sendable {
+        let value: Value
+    }
+
+    /// Records `model.socialStep` at the moment `signIn()` runs, so a test
+    /// can pin `AccountModel.signIn(with:)` sets `.waitingForProvider`
+    /// *before* handing off to the coordinator (bamware-ios#12).
+    private struct StepCapturingCoordinator: SocialSignInCoordinating {
+        let provider: SocialProvider
+        let outcome: SocialSignInOutcome
+        let modelBox: TestBox<AccountModel>
+        let recorder: Recorder<AccountModel.SocialStep?>
+        func signIn() async -> SocialSignInOutcome {
+            recorder.append(modelBox.value.socialStep)
+            return outcome
+        }
+    }
+
+    /// Same idea as `StepCapturingCoordinator`, for the token-exchange leg
+    /// (`.exchangingToken`) — records `model.socialStep` at the moment
+    /// `socialSignIn` runs.
+    private struct StepCapturingSocialAuth: SocialAuthServing {
+        let modelBox: TestBox<AccountModel>
+        let recorder: Recorder<AccountModel.SocialStep?>
+        let result: Result<AuthSession, Error>
+        func socialSignIn(
+            provider: SocialProvider, idToken: String, tenantId: String, name: String?
+        ) async throws -> AuthSession {
+            recorder.append(modelBox.value.socialStep)
+            return try result.get()
+        }
+    }
+
     private struct MockSocialAuth: SocialAuthServing {
         var result: Result<AuthSession, Error> = .failure(SocialAuthError.invalidResponse)
         /// Records the exact args this seam was called with, for the
@@ -259,5 +299,97 @@ import Testing
 
         #expect(!model.sessions.isSignedIn)
         #expect(model.phase == .failed(message: "That account's email isn't verified with the provider yet."))
+    }
+
+    // MARK: - socialStep (bamware-ios#12) — the two waits are distinguishable
+
+    @Test func socialStepGoesThroughWaitingForProviderThenExchangingTokenThenClears() async {
+        let sessions = AccountSessionStore(persistence: InMemorySessionStore())
+        let model = AccountModel(auth: NeverCalledAuth(), sessions: sessions)
+        let modelBox = TestBox(value: model)
+        let stepRecorder = Recorder<AccountModel.SocialStep?>()
+
+        model.socialSignIn = SocialSignInSupport(
+            config: AccountTenantConfig(
+                tenantId: Self.tenantId, authBaseURL: URL(string: "https://auth.test")!,
+                keychainService: "svc", supportsApple: true
+            ),
+            coordinators: [.apple: StepCapturingCoordinator(
+                provider: .apple,
+                outcome: .credential(SocialCredential(idToken: "apple-id-token", name: "Tester")),
+                modelBox: modelBox,
+                recorder: stepRecorder
+            )],
+            socialAuth: StepCapturingSocialAuth(
+                modelBox: modelBox, recorder: stepRecorder,
+                result: .success(Self.session(name: "Tester"))
+            )
+        )
+
+        #expect(model.socialStep == nil)
+        await model.signIn(with: .apple)
+
+        // Captured in call order: the coordinator sees `.waitingForProvider`
+        // (the native sheet leg), the server exchange sees
+        // `.exchangingToken` — proving the model tells the two waits apart
+        // and sets each one before the corresponding await, not after.
+        #expect(stepRecorder.all == [.waitingForProvider, .exchangingToken])
+        #expect(model.socialStep == nil) // cleared once the flow settles
+        #expect(model.phase == .idle)
+    }
+
+    @Test func cancelledSignInClearsSocialStep() async {
+        let sessions = AccountSessionStore(persistence: InMemorySessionStore())
+        let model = AccountModel(auth: NeverCalledAuth(), sessions: sessions)
+        model.socialSignIn = SocialSignInSupport(
+            config: AccountTenantConfig(
+                tenantId: Self.tenantId, authBaseURL: URL(string: "https://auth.test")!,
+                keychainService: "svc", supportsApple: true
+            ),
+            coordinators: [.apple: MockCoordinator(provider: .apple, outcome: .cancelled)],
+            socialAuth: MockSocialAuth(recordedCall: nil)
+        )
+
+        await model.signIn(with: .apple)
+
+        #expect(model.socialStep == nil)
+    }
+
+    @Test func serverErrorClearsSocialStep() async {
+        let model = makeModel(
+            config: AccountTenantConfig(
+                tenantId: Self.tenantId, authBaseURL: URL(string: "https://auth.test")!,
+                keychainService: "svc", supportsGoogle: true
+            ),
+            coordinators: [.google: MockCoordinator(
+                provider: .google, outcome: .credential(SocialCredential(idToken: "tok", name: nil))
+            )],
+            socialAuth: MockSocialAuth(result: .failure(SocialAuthError.unverifiedEmail), recordedCall: nil)
+        )
+
+        await model.signIn(with: .google)
+
+        #expect(model.socialStep == nil)
+        guard case .failed = model.phase else {
+            Issue.record("expected .failed, got \(model.phase)")
+            return
+        }
+    }
+
+    @Test func unavailableCoordinatorClearsSocialStep() async {
+        let model = makeModel(
+            config: AccountTenantConfig(
+                tenantId: Self.tenantId, authBaseURL: URL(string: "https://auth.test")!,
+                keychainService: "svc", supportsGoogle: true
+            ),
+            coordinators: [.google: MockCoordinator(
+                provider: .google, outcome: .unavailable(message: "Google sign-in isn't available yet.")
+            )],
+            socialAuth: MockSocialAuth(recordedCall: nil)
+        )
+
+        await model.signIn(with: .google)
+
+        #expect(model.socialStep == nil)
     }
 }

@@ -28,7 +28,24 @@ public final class AccountModel {
         case authIncomplete
     }
 
+    /// Which leg of a social sign-in is in flight (bamware-ios#12),
+    /// additive alongside `phase`. `nil` outside `signIn(with:)` (including
+    /// the whole password path) — screens use it only to tell the two
+    /// social waits apart, never as a replacement for `phase`/`isWorking`.
+    public enum SocialStep: Equatable, Sendable {
+        /// The native Apple/Google sheet is up. The OS owns the screen, so
+        /// a screen should NOT draw its own busy overlay here — just keep
+        /// the buttons disabled the same way `isWorking` already does.
+        case waitingForProvider
+        /// The provider returned a credential and we're exchanging it with
+        /// our own server (`SocialAuthServing.socialSignIn`, up to ~10s
+        /// cold). This is the wait a screen has nothing else to show for,
+        /// so it's the one that needs a visible "Signing you in…" state.
+        case exchangingToken
+    }
+
     public private(set) var phase: Phase = .idle
+    public private(set) var socialStep: SocialStep?
     public let sessions: AccountSessionStore
 
     /// Sign in with Apple/Google support (bamware-ios#4), set once by the
@@ -45,6 +62,12 @@ public final class AccountModel {
     /// social sign-in extension needs.
     func setPhaseForSocialSignIn(_ newPhase: Phase) {
         phase = newPhase
+    }
+
+    /// Same pattern as `setPhaseForSocialSignIn` above, for `socialStep`
+    /// (bamware-ios#12).
+    func setSocialStepForSocialSignIn(_ newStep: SocialStep?) {
+        socialStep = newStep
     }
 
     private let auth: any AccountAuthServing

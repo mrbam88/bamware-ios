@@ -56,18 +56,28 @@ extension AccountModel {
         }
 
         setPhaseForSocialSignIn(.working)
+        // `.waitingForProvider` (bamware-ios#12): the native Apple/Google
+        // sheet is about to take the screen — a caller that shows its own
+        // busy UI keyed off `socialStep` should stay quiet for this leg.
+        setSocialStepForSocialSignIn(.waitingForProvider)
         let outcome = await coordinator.signIn()
 
         switch outcome {
         case .cancelled:
             // Silent no-op — never surfaced as an error (Baat RN convention,
             // `src/lib/socialAuth.ts`).
+            setSocialStepForSocialSignIn(nil)
             setPhaseForSocialSignIn(.idle)
 
         case .unavailable(let message):
+            setSocialStepForSocialSignIn(nil)
             setPhaseForSocialSignIn(.failed(message: message))
 
         case .credential(let credential):
+            // `.exchangingToken` (bamware-ios#12): the provider sheet is
+            // gone and we're waiting on our own server, which is the leg
+            // that otherwise looks like a silent hang.
+            setSocialStepForSocialSignIn(.exchangingToken)
             do {
                 let session = try await support.socialAuth.socialSignIn(
                     provider: provider,
@@ -76,8 +86,10 @@ extension AccountModel {
                     name: credential.name
                 )
                 sessions.store(session)
+                setSocialStepForSocialSignIn(nil)
                 setPhaseForSocialSignIn(.idle)
             } catch {
+                setSocialStepForSocialSignIn(nil)
                 setPhaseForSocialSignIn(.failed(message: Self.socialFriendlyMessage(for: error)))
             }
         }
